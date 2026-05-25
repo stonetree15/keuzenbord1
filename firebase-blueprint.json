@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Information about a student in the class",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "avatarColor": { "type": "string" },
+        "image": { "type": "string" },
+        "icon": { "type": "string" }
+      },
+      "required": ["id", "name", "avatarColor"]
+    },
+    "Corner": {
+      "title": "Corner",
+      "description": "An interactive corner/activity area",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "capacity": { "type": "integer" },
+        "color": { "type": "string" },
+        "image": { "type": "string" },
+        "icon": { "type": "string" }
+      },
+      "required": ["id", "name", "capacity", "color"]
+    },
+    "Interaction": {
+      "title": "Interaction",
+      "description": "Records when students play in a corner",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "integer" },
+        "duration": { "type": "integer" },
+        "students": { "type": "array" },
+        "cornerId": { "type": "string" },
+        "cornerName": { "type": "string" },
+        "cornerIcon": { "type": "string" },
+        "cornerImage": { "type": "string" }
+      },
+      "required": ["timestamp", "duration", "students", "cornerId", "cornerName"]
+    },
+    "Evaluation": {
+      "title": "Evaluation",
+      "description": "Student performance evaluation",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "cornerId": { "type": "string" },
+        "rating": { "type": "string" },
+        "timestamp": { "type": "integer" },
+        "duration": { "type": "integer" },
+        "evaluationTypeId": { "type": "string" }
+      },
+      "required": ["studentId", "cornerId", "rating", "timestamp"]
+    },
+    "Moetje": {
+      "title": "Moetje",
+      "description": "Required tasks for students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "isPermanent": { "type": "boolean" },
+        "icon": { "type": "string" },
+        "image": { "type": "string" },
+        "imageMode": { "type": "boolean" }
+      },
+      "required": ["id", "name", "color", "isActive", "isPermanent"]
+    },
+    "MoetjeEvaluation": {
+      "title": "MoetjeEvaluation",
+      "description": "Results of required tasks",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string" },
+        "moetjeId": { "type": "string" },
+        "timestamp": { "type": "integer" },
+        "evaluationValue": { "type": "string" },
+        "type": { "type": "string" },
+        "isReset": { "type": "boolean" },
+        "moetjeName": { "type": "string" },
+        "moetjeIcon": { "type": "string" },
+        "moetjeImage": { "type": "string" }
+      },
+      "required": ["studentId", "moetjeId", "timestamp", "evaluationValue", "type"]
+    }
+  },
+  "firestore": {
+    "users/{userId}/students/{studentId}": {
+      "schema": "Student",
+      "description": "Class roster"
+    },
+    "users/{userId}/corners/{cornerId}": {
+      "schema": "Corner",
+      "description": "Available corners"
+    },
+    "users/{userId}/interactions/{id}": {
+      "schema": "Interaction",
+      "description": "Play history"
+    },
+    "users/{userId}/evaluations/{id}": {
+      "schema": "Evaluation",
+      "description": "Student evaluations"
+    },
+    "users/{userId}/moetjes/{id}": {
+      "schema": "Moetje",
+      "description": "Defined required tasks"
+    },
+    "users/{userId}/moetjeEvaluations/{id}": {
+      "schema": "MoetjeEvaluation",
+      "description": "Moetje completions"
+    },
+    "users/{userId}/attendance/{dateId}": {
+      "schema": { "type": "object" },
+      "description": "Daily attendance logs"
+    },
+    "pairing/{pairingId}": {
+      "schema": { "type": "object" },
+      "description": "Active device pairings"
+    }
+  }
+}

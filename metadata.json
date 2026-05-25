@@ -1,0 +1,5 @@
+{
+  "name": "Digitaal Keuzebord",
+  "description": "Een interactief keuzebord voor in de klas met veilige Google en Microsoft login. Beheer hoeken, leerlingen en capaciteit.",
+  "requestFramePermissions": ["camera"]
+}

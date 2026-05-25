@@ -1,0 +1,240 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Global Safety Net: Default Deny All (GDPR Requirement)
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Shared Helpers (Zero-Trust Identity)
+    // ===============================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      // GDPR Best Practice: Mandate verified emails for administrative actions
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isPaired(userId) {
+      // Relational Gate: Checks if a valid pairing exists in the 'pairing' collection
+      let pairingPath = /databases/$(database)/documents/pairing/$(request.auth.uid + "_" + userId);
+      return isSignedIn() && exists(pairingPath);
+    }
+
+    function canAdmin(userId) {
+      return isOwner(userId) && isVerified();
+    }
+
+    function canContribute(userId) {
+      return (isOwner(userId) || isPaired(userId)) && isVerified();
+    }
+
+    function canRead(userId) {
+      return (isOwner(userId) || isPaired(userId));
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // ===============================================================
+    // Entity Validations (The Anti-Update-Gap / PII Guard)
+    // ===============================================================
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['id', 'name', 'avatarColor']) &&
+             data.id is string && data.id.size() <= 64 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.avatarColor is string && data.avatarColor.size() <= 30 &&
+             (!data.keys().contains('image') || data.image == null || (data.image is string && data.image.size() <= 1048576)) &&
+             (!data.keys().contains('icon') || data.icon == null || (data.icon is string && data.icon.size() <= 64));
+    }
+
+    function isValidCorner(data) {
+      return data.keys().hasAll(['id', 'name', 'capacity', 'color']) &&
+             data.id is string && data.id.size() <= 64 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.capacity is int && data.capacity >= 0 && data.capacity <= 100 &&
+             data.color is string && data.color.size() <= 30 &&
+             (!data.keys().contains('image') || data.image == null || (data.image is string && data.image.size() <= 1048576)) &&
+             (!data.keys().contains('icon') || data.icon == null || (data.icon is string && data.icon.size() <= 64));
+    }
+
+    function isValidInteraction(data) {
+      return data.keys().hasAll(['timestamp', 'duration', 'students', 'cornerId', 'cornerName']) &&
+             data.timestamp is int &&
+             data.duration is int &&
+             data.students is list && data.students.size() <= 20 &&
+             (data.students.size() == 0 || (data.students[0] is string && data.students[0].size() <= 64)) &&
+             data.cornerId is string && data.cornerId.size() <= 64 &&
+             data.cornerName is string && data.cornerName.size() <= 100 &&
+             (!data.keys().contains('cornerIcon') || data.cornerIcon == null || (data.cornerIcon is string && data.cornerIcon.size() <= 64)) &&
+             (!data.keys().contains('cornerImage') || data.cornerImage == null || (data.cornerImage is string && data.cornerImage.size() <= 1048576));
+    }
+
+    function isValidEvaluation(data) {
+      return data.keys().hasAll(['studentId', 'cornerId', 'rating', 'timestamp']) &&
+             data.studentId is string && data.studentId.size() <= 64 &&
+             data.cornerId is string && data.cornerId.size() <= 64 &&
+             data.rating is string && data.rating.size() <= 64 &&
+             data.timestamp is int &&
+             (!data.keys().contains('evaluationTypeId') || data.evaluationTypeId is string && data.evaluationTypeId.size() <= 64) &&
+             (!data.keys().contains('duration') || data.duration is int);
+    }
+
+    function isValidMoetje(data) {
+      return data.keys().hasAll(['id', 'name', 'color', 'isActive', 'isPermanent']) &&
+             data.id is string && data.id.size() <= 64 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.color is string && data.color.size() <= 30 &&
+             data.isActive is bool &&
+             data.isPermanent is bool &&
+             (!data.keys().contains('image') || data.image == null || (data.image is string && data.image.size() <= 1048576)) &&
+             (!data.keys().contains('icon') || data.icon == null || (data.icon is string && data.icon.size() <= 64)) &&
+             (!data.keys().contains('imageMode') || data.imageMode is bool);
+    }
+
+    function isValidMoetjeEvaluation(data) {
+      return data.keys().hasAll(['studentId', 'moetjeId', 'timestamp', 'evaluationValue', 'type']) &&
+             data.studentId is string && data.studentId.size() <= 64 &&
+             data.moetjeId is string && data.moetjeId.size() <= 64 &&
+             data.timestamp is int &&
+             data.evaluationValue is string && data.evaluationValue.size() <= 100 &&
+             data.type is string && data.type.size() <= 50 &&
+             (!data.keys().contains('isReset') || data.isReset is bool) &&
+             (!data.keys().contains('moetjeName') || data.moetjeName is string && data.moetjeName.size() <= 100) &&
+             (!data.keys().contains('moetjeIcon') || data.moetjeIcon == null || (data.moetjeIcon is string && data.moetjeIcon.size() <= 64)) &&
+             (!data.keys().contains('moetjeImage') || data.moetjeImage == null || (data.moetjeImage is string && data.moetjeImage.size() <= 1048576));
+    }
+
+    // ===============================================================
+    // Routes (Multi-User Isolation Implementation)
+    // ===============================================================
+
+    match /pairing/{pairingId} {
+      allow create: if isVerified() && isValidId(pairingId) &&
+                    pairingId == request.auth.uid + "_" + incoming().ownerUid &&
+                    incoming().keys().hasAll(['ownerUid', 'satelliteUid', 'secret', 'updatedAt', 'createdAt']) &&
+                    incoming().satelliteUid == request.auth.uid &&
+                    incoming().secret == get(/databases/$(database)/documents/users/$(incoming().ownerUid)/config/sync).data.secret;
+      
+      allow update: if isVerified() && isValidId(pairingId) &&
+                    (pairingId.startsWith(request.auth.uid + "_") || pairingId.endsWith("_" + request.auth.uid)) &&
+                    incoming().ownerUid == existing().ownerUid &&
+                    incoming().satelliteUid == existing().satelliteUid &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['secret', 'updatedAt']);
+
+      allow list: if isSignedIn() && (resource.data.ownerUid == request.auth.uid || resource.data.satelliteUid == request.auth.uid);
+      allow get, delete: if isSignedIn() && (pairingId.startsWith(request.auth.uid + "_") || pairingId.endsWith("_" + request.auth.uid));
+    }
+
+    match /users/{userId} {
+      // User profile can only be read by the owner or verified paired devices
+      allow get: if canRead(userId);
+      // GDPR: Allow owner full control over their document for removal
+      allow create, update, delete: if isOwner(userId);
+
+      match /config/{configId} {
+        allow list: if canRead(userId);
+        allow get: if (configId == 'sync') ? isOwner(userId) : (isValidId(configId) && canRead(userId));
+        allow create, update: if isOwner(userId) && isVerified() && isValidId(configId);
+        allow delete: if isOwner(userId);
+      }
+
+      match /state/{stateId} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow write: if (request.method == 'delete')
+          ? isOwner(userId)
+          : ((stateId == 'choiceSettings') 
+            ? (isOwner(userId) && isVerified()) 
+            : (canContribute(userId) && (request.method == 'create' || incoming().diff(existing()).affectedKeys().hasOnly(['assignments', 'timestamps', 'updatedAt', 'cornerHistory', 'assignmentTimestamps', 'moetjeHistory', 'isPaused', 'pausedAt']))));
+      }
+
+      match /corners/{cornerId} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canAdmin(userId) && isValidId(cornerId) && isValidCorner(incoming()) && incoming().keys().size() <= 8;
+        allow update: if canAdmin(userId) && isValidId(cornerId) && isValidCorner(incoming()) && 
+                         incoming().id == existing().id &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'capacity', 'color', 'icon', 'image', 'fixedId']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /students/{studentId} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canAdmin(userId) && isValidId(studentId) && isValidStudent(incoming()) && incoming().keys().size() <= 7;
+        allow update: if canAdmin(userId) && isValidId(studentId) && isValidStudent(incoming()) && 
+                         incoming().id == existing().id &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'avatarColor', 'icon', 'image']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /interactions/{id} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canContribute(userId) && isValidId(id) && isValidInteraction(incoming()) && incoming().keys().size() <= 9;
+        allow update: if canContribute(userId) && isValidId(id) && isValidInteraction(incoming()) && 
+                         incoming().cornerId == existing().cornerId &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['duration', 'students', 'timestamp']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /evaluations/{id} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canContribute(userId) && isValidId(id) && isValidEvaluation(incoming()) && incoming().keys().size() <= 7;
+        allow update: if canContribute(userId) && isValidId(id) && isValidEvaluation(incoming()) && 
+                         incoming().studentId == existing().studentId &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'timestamp', 'duration']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /moetjes/{id} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canAdmin(userId) && isValidId(id) && isValidMoetje(incoming()) && incoming().keys().size() <= 9;
+        allow update: if canAdmin(userId) && isValidId(id) && isValidMoetje(incoming()) && 
+                         incoming().id == existing().id &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'color', 'isActive', 'isPermanent', 'icon', 'image', 'imageMode']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /moetjeEvaluations/{id} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canContribute(userId) && isValidId(id) && isValidMoetjeEvaluation(incoming()) && incoming().keys().size() <= 10;
+        allow update: if canContribute(userId) && isValidId(id) && isValidMoetjeEvaluation(incoming()) && 
+                         incoming().studentId == existing().studentId &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['evaluationValue', 'timestamp', 'isReset', 'type', 'resetMessage']);
+        allow delete: if isOwner(userId);
+      }
+
+      match /attendance/{dateId} {
+        allow list: if canRead(userId);
+        allow get: if canRead(userId);
+        allow create: if canContribute(userId) && isValidId(dateId);
+        allow update: if canContribute(userId) && isValidId(dateId) && incoming().diff(existing()).affectedKeys().hasAny(['absentIds', 'updatedAt']);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}
