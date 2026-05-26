@@ -113,6 +113,7 @@ import { getCroppedImg } from './lib/imageUtils';
 import { AuthProviderComponent, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
 import { UserMenu } from './components/UserMenu';
+import { CookieBanner } from './components/CookieBanner';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
 import { 
   doc, 
@@ -6648,6 +6649,7 @@ export default function App() {
   return (
     <AuthProviderComponent>
       <MainApp />
+      <CookieBanner />
     </AuthProviderComponent>
   );
 }
