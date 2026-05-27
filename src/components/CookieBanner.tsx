@@ -31,11 +31,27 @@ export const CookieBanner: React.FC = () => {
 
   useEffect(() => {
     const handleOpenCookieSettings = () => {
+      setPreferenceEnabled(localStorage.getItem('keuzebord_pref_consent') === 'true');
+      setSessionConsentEnabled(localStorage.getItem('keuzebord_session_consent') === 'true');
       setActiveTab('info');
       setShowDetailsModal(true);
     };
+    
+    const handleCookieConsentChangedEvent = () => {
+      const isConsentGiven = localStorage.getItem('keuzebord_cookie_consent');
+      if (!isConsentGiven) {
+        setIsVisible(true);
+      }
+      setPreferenceEnabled(localStorage.getItem('keuzebord_pref_consent') === 'true');
+      setSessionConsentEnabled(localStorage.getItem('keuzebord_session_consent') === 'true');
+    };
+
     window.addEventListener('open-cookie-settings', handleOpenCookieSettings);
-    return () => window.removeEventListener('open-cookie-settings', handleOpenCookieSettings);
+    window.addEventListener('cookie-consent-changed', handleCookieConsentChangedEvent);
+    return () => {
+      window.removeEventListener('open-cookie-settings', handleOpenCookieSettings);
+      window.removeEventListener('cookie-consent-changed', handleCookieConsentChangedEvent);
+    };
   }, []);
 
   const handleAcceptAll = () => {
@@ -45,6 +61,7 @@ export const CookieBanner: React.FC = () => {
     setPreferenceEnabled(true);
     setSessionConsentEnabled(true);
     setIsVisible(false);
+    window.dispatchEvent(new CustomEvent('cookie-consent-changed'));
   };
 
   const handleRejectAll = () => {
@@ -58,6 +75,7 @@ export const CookieBanner: React.FC = () => {
     localStorage.removeItem('fullscreen_pref');
     
     setIsVisible(false);
+    window.dispatchEvent(new CustomEvent('cookie-consent-changed'));
   };
 
   const handleSavePreferences = () => {
@@ -72,6 +90,7 @@ export const CookieBanner: React.FC = () => {
     
     setIsVisible(false);
     setShowDetailsModal(false);
+    window.dispatchEvent(new CustomEvent('cookie-consent-changed'));
   };
 
   if (!isVisible && !showDetailsModal) return null;
@@ -237,7 +256,7 @@ export const CookieBanner: React.FC = () => {
                           <tr>
                             <td className="px-3 py-2.5 font-mono text-indigo-650">fullscreen_pref</td>
                             <td className="px-3 py-2.5">Local Storage</td>
-                            <td className="px-3 py-2.5">Slaat de schermvoorkeur op (bijv. schermvullend houten keuzebordbord op een smartboard).</td>
+                            <td className="px-3 py-2.5">Slaat de schermvoorkeur op (bijv. schermvullend houten keuzebordbord op een digibord).</td>
                             <td className="px-3 py-2.5">Permanent</td>
                           </tr>
                         </tbody>
@@ -295,17 +314,17 @@ export const CookieBanner: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Categorie 2: Functionele Smartboard- & weergavevoorkeuren */}
+                      {/* Categorie 2: Functionele keuzebord- & weergavevoorkeuren */}
                       <div className="flex justify-between items-start gap-4 pt-4">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] font-black text-gray-900 uppercase tracking-wider">
-                              2. Scherm- & Smartboard Voorkeuren
+                              2. Scherm- & digibord-voorkeuren
                             </span>
                           </div>
                           <p className="text-[10px] text-gray-400 font-medium">Sleutels: <code className="font-mono text-[9px] bg-gray-50 px-1 py-0.5 rounded text-indigo-650">fullscreen_pref</code></p>
                           <p className="text-[10.5px] text-gray-500 font-bold leading-normal">
-                            Slaat de weergavekeuzes en vensterinstellingen van de school op (zoals de fullscreen-modus op digitale houten smartboards of een actieve hoekenweergave). Als je dit uitschakelt, moet je deze instellingen bij elk bezoek opnieuw invoeren.
+                            Slaat de weergavekeuzes en vensterinstellingen van de school op (zoals de fullscreen-modus op digitale houten keuzeborden of een actieve hoekenweergave). Als je dit uitschakelt, moet je deze instellingen bij elk bezoek opnieuw invoeren.
                           </p>
                         </div>
                         <div className="pt-1 select-none">

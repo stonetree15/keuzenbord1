@@ -2540,7 +2540,15 @@ function MainApp() {
     if (!effectiveUid || isSatellite || !hasLoadedSettings.current) return;
     
     const timeoutId = setTimeout(() => {
-      const settings = {
+      const consentItem = localStorage.getItem('keuzebord_legal_consent_20260526');
+      let consentData: { timestamp: string, version: string } | null = null;
+      if (consentItem) {
+        try {
+          consentData = JSON.parse(consentItem);
+        } catch (e) {}
+      }
+
+      const settings: any = {
         totalStudentSlots,
         minPlayTime,
         cornerEvaluationEnabled,
@@ -2549,6 +2557,12 @@ function MainApp() {
         moetjesEvaluationCustomId: moetjesEvaluationCustomId !== undefined ? moetjesEvaluationCustomId : null,
         displayMode
       };
+
+      if (consentData) {
+        settings.termsAcceptedAt = consentData.timestamp;
+        settings.termsVersion = consentData.version;
+      }
+
       setDoc(doc(db, `users/${effectiveUid}/config/settings`), settings, { merge: true })
         .catch(err => handleFirestoreError(err, OperationType.WRITE, `users/${effectiveUid}/config/settings`));
     }, 2000); // Settings rarely change rapidly

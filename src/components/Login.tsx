@@ -16,11 +16,24 @@ export const Login: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [privacyAccepted, setPrivacyAccepted] = React.useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = React.useState(false);
-  const [legalModalTab, setLegalModalTab] = React.useState<'privacy' | 'terms'>('privacy');
+  const [legalModalTab, setLegalModalTab] = React.useState<'privacy' | 'terms' | 'contact'>('privacy');
+  const [cookieStateTrigger, setCookieStateTrigger] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleConsentChanged = () => {
+      setCookieStateTrigger(prev => prev + 1);
+    };
+    window.addEventListener('cookie-consent-changed', handleConsentChanged);
+    return () => window.removeEventListener('cookie-consent-changed', handleConsentChanged);
+  }, []);
 
   const isUnverified = user && !user.emailVerified && user.providerData.some(p => p.providerId === 'password');
 
   const handleSocialLogin = async () => {
+    if (!privacyAccepted) {
+      setError('Gelieve eerst akkoord te gaan met de algemene voorwaarden en het privacybeleid door het vinkje aan te vinken.');
+      return;
+    }
     setError(null);
     setSuccess(null);
     try {
@@ -61,6 +74,13 @@ export const Login: React.FC = () => {
         setIsResetMode(false);
       } else if (isSignUp) {
         await signUpWithEmail(email, password);
+        const consentData = {
+          timestamp: new Date().toISOString(),
+          version: '2026-05-26',
+          email: email
+        };
+        localStorage.setItem('keuzebord_legal_consent_20260526', JSON.stringify(consentData));
+        console.log('Gebruiker ging akkoord met algemene voorwaarden en privacybeleid:', consentData);
         setSuccess('Hoera! Je account is aangemaakt. Vergeet niet je e-mail te bevestigen via de link die we je gestuurd hebben.');
       } else {
         await signInWithEmail(email, password);
@@ -245,7 +265,7 @@ export const Login: React.FC = () => {
                 </div>
               )}
 
-              {isSignUp && (
+              {!isResetMode && (
                 <div className="flex items-start gap-2.5 p-3 bg-indigo-50/50 border-2 border-indigo-100/50 rounded-xl animate-in fade-in slide-in-from-top-2 duration-200">
                   <input 
                     type="checkbox"
@@ -256,16 +276,16 @@ export const Login: React.FC = () => {
                     className="mt-1 h-4.5 w-4.5 rounded text-indigo-600 focus:ring-indigo-500 border-gray-300 cursor-pointer accent-indigo-600"
                   />
                   <label htmlFor="privacy-accepted" className="text-[10px] text-gray-650 font-bold leading-relaxed cursor-pointer select-none">
-                    Ik ga uitdrukkelijk akkoord met het sluiten van de bindende <button type="button" onClick={() => { setLegalModalTab('terms'); setShowPrivacyModal(true); }} className="text-indigo-600 hover:underline font-black">Algemene Gebruikersvoorwaarden</button> (inclusief de volledige uitsluiting van aansprakelijkheid) en de <button type="button" onClick={() => { setLegalModalTab('privacy'); setShowPrivacyModal(true); }} className="text-indigo-600 hover:underline font-black">Privacyverklaring</button>. Ik bevestig dat ik of de school de wettelijk vereiste toestemming bezit voor alle leerlingen onder de 16 jaar.
+                    Ik ga akkoord met de <button type="button" onClick={() => { setLegalModalTab('terms'); setShowPrivacyModal(true); }} className="text-indigo-600 hover:underline font-black">algemene voorwaarden</button> en het <button type="button" onClick={() => { setLegalModalTab('privacy'); setShowPrivacyModal(true); }} className="text-indigo-600 hover:underline font-black">privacybeleid</button>. Ik bevestig dat ik of de school beschikt over een geldige rechtsgrond onder de AVG voor de verwerking van leerlingengegevens.
                   </label>
                 </div>
               )}
 
               <Button 
                 type="submit"
-                disabled={isSubmitting || (isSignUp && !privacyAccepted)}
+                disabled={isSubmitting || (!isResetMode && !privacyAccepted)}
                 className={`w-full py-6 text-lg font-black uppercase tracking-widest shadow-md transition-all active:scale-95 ${
-                  isSignUp && !privacyAccepted 
+                  !isResetMode && !privacyAccepted 
                     ? 'bg-gray-300 hover:bg-gray-300 text-gray-500 cursor-not-allowed opacity-75' 
                     : 'bg-indigo-600 hover:bg-indigo-700 text-white'
                 }`}
@@ -343,13 +363,16 @@ export const Login: React.FC = () => {
                 >
                   Algemene Gebruikersvoorwaarden
                 </button>
+                <span className="text-gray-300 text-[9px] font-black">•</span>
+                <button 
+                  type="button" 
+                  onClick={() => { setLegalModalTab('contact'); setShowPrivacyModal(true); }} 
+                  className="text-[9px] font-black text-indigo-500 uppercase tracking-widest hover:text-indigo-600 hover:underline cursor-pointer"
+                >
+                  Contact & Over ons
+                </button>
               </div>
-              <div className="bg-amber-50/80 border border-amber-100 rounded-xl p-2.5 text-center shadow-inner">
-                <p className="text-[8px] font-black text-amber-800 uppercase tracking-wider mb-0.5">Disclaimer & Aansprakelijkheid</p>
-                <p className="text-[7.5px] font-semibold text-amber-700 leading-tight">
-                  Door in te loggen of te registreren ga je akkoord met deze bindende voorwaarden. De applicatie wordt geleverd "in de huidige staat" (as-is) zonder enige garanties. De ontwikkelaar/auteur is op geen enkele wijze aansprakelijk voor dataverlies, beveiligingsincidenten, schade of de werking van het systeem. Het gebruik geschiedt volledig op eigen risico.
-                </p>
-              </div>
+
             </div>
           </CardContent>
         </Card>
@@ -368,16 +391,28 @@ export const Login: React.FC = () => {
               <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-indigo-100 rounded-2xl text-indigo-600">
-                    {legalModalTab === 'privacy' ? <ShieldCheck size={22} strokeWidth={2.5} /> : <Scale size={22} strokeWidth={2.5} />}
+                    {legalModalTab === 'privacy' ? (
+                      <ShieldCheck size={22} strokeWidth={2.5} />
+                    ) : legalModalTab === 'contact' ? (
+                      <Mail size={22} strokeWidth={2.5} />
+                    ) : (
+                      <Scale size={22} strokeWidth={2.5} />
+                    )}
                   </div>
                   <div>
                     <h3 className="text-sm font-black text-gray-950 uppercase tracking-tight font-sans">
-                      {legalModalTab === 'privacy' ? 'Privacyverklaring & Cookies' : 'Algemene Gebruikersvoorwaarden & EULA'}
+                      {legalModalTab === 'privacy' 
+                        ? 'Privacyverklaring & Cookies' 
+                        : legalModalTab === 'contact' 
+                        ? 'Contact & Over ons' 
+                        : 'Algemene Gebruikersvoorwaarden & EULA'}
                     </h3>
                     <p className="text-[8px] font-bold text-indigo-500 uppercase tracking-widest leading-none mt-1">
                       {legalModalTab === 'privacy' 
                         ? 'In overeenstemming met de AVG / GDPR & Belgische Privacywetgeving' 
-                        : 'Juridisch bindende overeenkomst en volledige aansprakelijkheidsuitsluiting'}
+                        : legalModalTab === 'contact'
+                        ? 'Hobby project informatie en contactmogelijkheden'
+                        : 'Algemene Gebruikersvoorwaarden en aansprakelijkheidsbeperking'}
                     </p>
                   </div>
                 </div>
@@ -413,222 +448,474 @@ export const Login: React.FC = () => {
                   <Scale size={13} />
                   Gebruikersvoorwaarden & Disclaimer
                 </button>
+                <button
+                  onClick={() => setLegalModalTab('contact')}
+                  className={`px-4 py-3 font-black text-[10px] uppercase tracking-wider rounded-t-xl transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+                    legalModalTab === 'contact'
+                      ? 'border-indigo-600 text-indigo-650 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.02)]'
+                      : 'border-transparent text-gray-400 hover:text-gray-650 bg-transparent'
+                  }`}
+                >
+                  <Mail size={13} />
+                  Contact & Over Ons
+                </button>
               </div>
 
               <div className="p-6 space-y-5 overflow-y-auto text-xs text-gray-600 leading-relaxed font-bold custom-scrollbar flex-1">
-                {legalModalTab === 'privacy' ? (
+                {legalModalTab === 'privacy' && (
                   <div className="space-y-5 animate-in fade-in duration-150">
                     <div className="bg-indigo-50/50 text-indigo-900 p-4 rounded-2xl space-y-2 border border-indigo-100">
-                      <p className="font-black text-[11.5px] uppercase tracking-wide">Bij Keuzebord hechten we grote waarde aan de privacy van jou én je leerlingen.</p>
+                      <p className="font-black text-[11.5px] uppercase tracking-wide flex items-center gap-1.5">
+                        <ShieldCheck size={16} className="text-indigo-600 shrink-0" />
+                        Privacybeleid Keuzebord
+                      </p>
                       <p className="text-[10.5px] font-semibold text-indigo-700 leading-relaxed">
-                        Omdat deze applicatie in klaslokalen wordt ingezet voor jonge kleuters en leerlingen onder de 16 jaar, hebben we de gegevensverwerking tot een absoluut minimum beperkt en maximaal beveiligd. Hieronder lees je exact welke persoonsgegevens we wel en niet verwerken.
+                        <strong>Laatste update:</strong> 26 mei 2026. Dit Privacybeleid beschrijft hoe Keuzebord omgaat met persoonsgegevens en cookies, met aandacht voor de toepasselijke Belgische en Europese privacywetgeving, inclusief de AVG/GDPR.
                       </p>
                     </div>
 
-                    {/* Welke gegevens gebruikt deze app? */}
-                    <div className="space-y-2">
+                    {/* 1. Inleiding en toepassingsgebied */}
+                    <div className="space-y-1.5">
                       <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
-                        <CheckSquareIcon /> 1. Welke gegevens worden verwerkt en waarom?
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        1. Inleiding en toepassingsgebied
                       </h4>
-                      <p className="text-[10.5px] font-medium text-gray-505">
-                        Wij verwerken uitsluitend gegevens die noodzakelijk zijn om het klas-keuzebord te laten functioneren, bezochte hoeken te analyseren en de accounts van leerkrachten te beveiligen:
-                      </p>
-                      <ul className="list-disc pl-5 space-y-1 text-gray-650 text-[10.5px]">
-                        <li><strong>E-mailadres & accountgegevens:</strong> Van jou (de leerkracht) om je account aan te maken, veilig in te loggen en je gegevens te synchroniseren zodat ze niet verloren gaan.</li>
-                        <li><strong>Voor- en achternamen van leerlingen:</strong> Dit wordt ingevoerd door de leerkracht om de leerlingen op de digitale houten blokjes/kaartjes weer te geven. Inactieve accounts en namen worden na 2 jaar inactiviteit gewist.</li>
-                        <li><strong>Foto/Afbeelding (Optioneel):</strong> De leerkracht heeft de optie om een foto/avatar te koppelen aan een leerling. Dit wordt direct versleuteld en beveiligd opgeslagen op onze Firebase-cloudopslag.</li>
-                        <li><strong>IP-adres & Technische logs:</strong> Je browser- of apparaattype en IP-adres worden automatisch gelogd door de hostinginfrastructuur (Google Firebase). Dit gebeurt puur voor netwerkbeveiliging (zoals brute-force inlogaanvallen voorkomen) en storingsdiagnose. Deze logbestanden worden na maximaal 30 dagen overschreven.</li>
-                        <li><strong>Activiteiten & Evaluaties:</strong> De app houdt bij welke leerlingen op welk moment welke hoek hebben gekozen en eventueel hun humeur-/smileyevaluaties, om educatieve statistieken voor de leerkracht te berekenen.</li>
-                      </ul>
-                    </div>
-
-                    {/* Welke gegevens verwerken we NIET? */}
-                    <span className="block border-t border-gray-100 my-4" />
-                    <div className="space-y-2">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650">
-                        <CheckSquareIcon /> 2. Welke gegevens gebruiken we absoluut NIET?
-                      </h4>
-                      <p className="text-[10.5px] font-medium text-gray-505">
-                        Er is geen enkele functionele reden of juridische basis om gevoelige of bijzondere overheidsgegevens van leerlingen op te slaan. Wij slaan daarom de volgende informatie <strong>NIET</strong> op:
-                      </p>
-                      <table className="w-full text-left text-[10.5px] border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-100">
-                        <thead className="bg-gray-50 text-[9px] uppercase font-black tracking-wider text-gray-400">
-                          <tr>
-                            <th className="px-3 py-2">Categorie</th>
-                            <th className="px-3 py-2 text-center">Status</th>
-                            <th className="px-3 py-2">Toelichting</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-105 font-bold text-gray-600">
-                          <tr>
-                            <td className="px-3 py-2"><strong>BSN / Rijksregisternummer</strong></td>
-                            <td className="px-3 py-2 text-center text-red-600 font-extrabold text-[9px]">❌ GEEN VERWERKING</td>
-                            <td className="px-3 py-2 text-gray-500 font-semibold text-[9.5px]">Alleen gemachtigde overheidsinstanties mogen het BSN gebruiken. Wij vragen of bewaren dit nooit.</td>
-                          </tr>
-                          <tr>
-                            <td className="px-3 py-2"><strong>Bank- of financiële gegevens</strong></td>
-                            <td className="px-3 py-2 text-center text-red-600 font-extrabold text-[9px]">❌ GEEN VERWERKING</td>
-                            <td className="px-3 py-2 text-gray-500 font-semibold text-[9.5px]">Deze website is gratis in gebruik. We verwerken geen betaal- of creditcardgegevens.</td>
-                          </tr>
-                          <tr>
-                            <td className="px-3 py-2"><strong>Bijzondere Persoonsgegevens</strong></td>
-                            <td className="px-3 py-2 text-center text-red-600 font-extrabold text-[9px]">❌ GEEN VERWERKING</td>
-                            <td className="px-3 py-2 text-gray-500 font-semibold text-[9.5px]">Informatie over ras, godsdienst, politieke voorkeur, medische status of seksuele geaardheid is strikt verboden te bewaren.</td>
-                          </tr>
-                          <tr>
-                            <td className="px-3 py-2"><strong>Surfgedrag- & Marketingcookies</strong></td>
-                            <td className="px-3 py-2 text-center text-red-600 font-extrabold text-[9px]">❌ GEEN VERWERKING</td>
-                            <td className="px-3 py-2 text-gray-500 font-semibold text-[9.5px]">Wij maken geen gebruik van advertentienetwerken of marketingtrackers om surfgedrag over websites heen te volgen.</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Minderjarigen en leerlingen jonger dan 16 */}
-                    <span className="block border-t border-gray-100 my-4" />
-                    <div className="space-y-2 p-4 bg-orange-50/70 text-orange-950 border border-orange-100 rounded-2xl">
-                      <h4 className="font-sans font-black text-[11px] uppercase tracking-tight text-orange-850 flex items-center gap-1.5 flex-row">
-                        <Scale size={16} /> 3. Leerlingen jonger dan 16 jaar
-                      </h4>
-                      <p className="text-[10.5px] font-semibold leading-relaxed">
-                        De kleuters en scholieren die gebruik maken van het fysieke of digitale keuzebord zijn in de regel jonger dan 16 jaar. 
-                      </p>
-                      <p className="text-[10.5px] font-medium text-orange-900 mt-1 leading-relaxed">
-                        Op grond van de AVG/GDPR is hiervoor wettelijk toestemming vereist van ouders of voogden. De school of jij als leerkracht verklaart bij registratie dat deze toestemming geregeld is onder de algemene AVG-richtlijnen van de school of dat ouders hiervoor uitdrukkelijke toestemming hebben gegeven (bijv. voor het gebruik van hun naam en/of foto in de beveiligde schoolomgeving).
+                      <p className="text-[10.5px] text-gray-500 font-medium">
+                        Keuzebord is een online keuzebordapplicatie ontwikkeld voor gebruik in het onderwijs. Dit Privacybeleid is van toepassing op het gebruik van de website (de “Website”) en de applicatie, software en het platform (het “Platform”) dat wordt aangeboden en beheerd door Keuzebord.
                       </p>
                     </div>
 
-                    {/* Bewaartermijnen */}
-                    <span className="block border-t border-gray-100 my-4" />
-                    <div className="space-y-2">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650">
-                        <Eye size={16} /> 4. Hoe lang worden gegevens bewaard? (Bewaartermijnen)
+                    {/* Gegevensbescherming & contact */}
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
+                        <CheckSquareIcon /> 2. Gegevensbescherming en contact
                       </h4>
-                      <p className="text-[10.5px] font-medium text-gray-505">
-                        Wij bewaren gegevens niet langer dan noodzakelijk voor het functionele doel:
+                      <p className="text-[10.5px] text-gray-550 font-medium select-none font-semibold">
+                        Voor vragen over dit Privacybeleid of voor de uitoefening van uw rechten onder de AVG kunt u contact opnemen met de ontwikkelaar/beheerder via de beschikbare contactmogelijkheden binnen het Platform.
                       </p>
-                      <ul className="list-disc pl-5 space-y-1 text-gray-650 text-[10.5px]">
-                        <li><strong>Actieve Accounts:</strong> Zolang je account actief gebruikt wordt, bewaren we je klasgegevens zodat je dagelijks direct aan de slag kunt. Accounts die al twee jaar inactief zijn, worden automatisch verwijderd.</li>
-                        <li><strong>Definitieve verwijdering door jou:</strong> Je hebt onder de AVG het recht om vergeten te worden. Je kunt op elk gewenst moment ál je leerlingen, afbeeldingen, keuzes en je hele account met één klik <strong>permanent</strong> en definitief vernietigen. Dit regelt de app technisch direct via de knop <em>"Account verwijderen"</em> in het dropdown-menu van je profiel.</li>
-                      </ul>
                     </div>
 
-                    {/* Derden & Verwerkers */}
-                    <span className="block border-t border-gray-100 my-4" />
-                    <div className="space-y-2">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-emerald-600">
-                        <ShieldCheck size={16} /> 5. Delen met derden / ICT-Verwerkers
+                    {/* 3. Gegevensverwerking en doeleinden */}
+                    <div className="space-y-3">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        3. Gegevensverwerking en doeleinden
                       </h4>
-                      <p className="text-[10.5px] font-medium text-gray-550 leading-relaxed">
-                        Keuzebord verkoopt of deelt NOOIT gegevens met derden. We maken uitsluitend gebruik van gecertificeerde hostingpartners om de service stabiel en veilig in te richten:
+                      <p className="text-[10.5px] text-gray-550 font-medium font-semibold">
+                        Wij verwerken uitsluitend persoonsgegevens die noodzakelijk zijn voor de werking van het keuzebord binnen de onderwijscontext. De verwerking gebeurt op basis van de uitvoering van de dienstverlening en/of een andere geldige rechtsgrond onder de AVG.
                       </p>
-                      <div className="p-3.5 bg-gray-50 rounded-xl space-y-1 text-[10.5px] border border-gray-100 leading-relaxed font-semibold text-gray-600">
-                        <p><strong>Subverwerker:</strong> Google Firebase Cloud (Google Cloud Platform Inc.)</p>
-                        <p><strong>Doel:</strong> Beveiligde database-opslag (Cloud Firestore) en authenticatie-infrastructuur (Firebase Authentication) op serverlocaties binnen de Europese Unie (EU).</p>
-                        <p className="text-[10px] text-gray-400 font-bold leading-normal">Er zijn sluitende modelcontractbepalingen (Verwerkersovereenkomst) van kracht met Google Cloud om de strikte geheimhouding, back-ups en ISO 27001-informatiebeveiliging te garanderen.</p>
+
+                      <div className="space-y-2 mt-2">
+                        <table className="w-full text-left text-[10px] border border-gray-100 rounded-xl overflow-hidden divide-y divide-gray-105 animate-in fade-in duration-200">
+                          <thead className="bg-gray-50 text-[9px] uppercase font-black text-gray-400">
+                            <tr>
+                              <th className="px-2.5 py-1.5 w-1/4">Categorie</th>
+                              <th className="px-2.5 py-1.5 w-1/3">Voorbeelden</th>
+                              <th className="px-2.5 py-1.5">Doel</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100 font-bold text-gray-500">
+                            <tr className="align-top">
+                              <td className="px-2.5 py-1.5 text-gray-900 font-black">Accountgegevens leerkracht</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">E-mailadres, wachtwoord</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Registratie, beveiligde toegang en beheer van het account en keuzeborden</td>
+                            </tr>
+                            <tr className="align-top">
+                              <td className="px-2.5 py-1.5 text-gray-900 font-black">Klas- en leerlinggegevens</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Door de leerkracht ingevoerde leerlingnamen, keuzes en klasindeling</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Functioneren van het keuzebord en weergave van klasgegevens</td>
+                            </tr>
+                            <tr className="align-top">
+                              <td className="px-2.5 py-1.5 text-gray-900 font-black">Afbeeldingen (optioneel)</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Door de gebruiker geüploade afbeeldingen of avatars</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Weergave binnen de eigen klasomgeving</td>
+                            </tr>
+                            <tr className="align-top">
+                              <td className="px-2.5 py-1.5 text-gray-900 font-black">Technische sessiegegevens</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Sessietokens en functionele cookies</td>
+                              <td className="px-2.5 py-1.5 font-medium text-[9.5px]">Authenticatie en technische werking van het Platform</td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
+
+                      <p className="text-[10px] text-gray-450 font-normal leading-normal mt-1 bg-gray-50 p-2.5 rounded-xl border border-gray-100 font-semibold">
+                        Wij verwerken geen gegevens voor marketingdoeleinden en verzamelen geen niet-noodzakelijke persoonsgegevens zoals adressen of telefoonnummers. Wanneer u inlogt via een externe provider zoals Google of Microsoft, worden enkel de minimale accountgegevens gebruikt die nodig zijn om een leerkrachtenaccount aan te maken en te beheren. Wij verkopen of delen persoonsgegevens niet met derden.
+                      </p>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-5 animate-in fade-in duration-150">
-                    <div className="bg-amber-50/70 text-amber-950 p-4 rounded-2xl space-y-2 border border-amber-100 flex items-start gap-3">
-                      <div className="p-2 bg-white text-amber-600 rounded-xl shrink-0 mt-0.5 shadow-sm">
-                        <AlertTriangle size={18} strokeWidth={2.5} />
+
+                    {/* 4. Cookies en tracking */}
+                    <span className="block border-t border-gray-100 my-4" />
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        4. Cookies en tracking
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium font-semibold">
+                        Keuzebord gebruikt uitsluitend functionele cookies die noodzakelijk zijn voor de werking van het Platform. Noodzakelijke cookies worden automatisch geplaatst. Voor niet-noodzakelijke cookies geldt dat deze enkel worden gebruikt indien hiervoor toestemming is gegeven.
+                      </p>
+
+                      {/* Interactive Cookie Triage Box */}
+                      <div className="p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-[10.5px] space-y-2">
+                        <p className="font-extrabold text-indigo-900 text-[11px] uppercase tracking-wide">Uw Huidige Toestemmingsstatus:</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-indigo-950">
+                          <div>
+                            <span className="font-semibold text-gray-500">Toestemmingsniveau:</span>{' '}
+                            <span className="font-extrabold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wide">
+                              Toestemming niet vereist voor functionele cookies
+                            </span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-500">Cookie-beleid:</span>{' '}
+                            <span className="font-mono text-[9px] bg-white border px-1 py-0.5 rounded text-indigo-700 font-extrabold">
+                              100% AVG-conform
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowPrivacyModal(false);
+                              setTimeout(() => {
+                                window.dispatchEvent(new CustomEvent('open-cookie-settings'));
+                              }, 150);
+                            }}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white font-black text-[9px] uppercase tracking-wider px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                          >
+                            Wijzig Cookie-instellingen
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              localStorage.removeItem('keuzebord_cookie_consent');
+                              localStorage.removeItem('keuzebord_pref_consent');
+                              localStorage.removeItem('keuzebord_session_consent');
+                              localStorage.removeItem('fullscreen_pref');
+                              window.dispatchEvent(new CustomEvent('cookie-consent-changed'));
+                              setShowPrivacyModal(false);
+                            }}
+                            className="bg-white hover:bg-red-50 text-red-650 border border-red-200 font-extrabold text-[9px] uppercase tracking-wider px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                          >
+                            Toestemming Intrekken
+                          </button>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-black text-[11px] uppercase tracking-wide text-amber-900">Belangrijke Juridische Vrijwaring & Contract</p>
-                        <p className="text-[10.5px] font-semibold text-amber-800 leading-normal">
-                          Lees deze voorwaarden aandachtig door. Door gebruik te maken van dit platform (Keuzebord) sluit je een bindende, wettelijke overeenkomst en vrijwaar je de ontwikkelaar/auteur volledig van elke aansprakelijkheid.
+
+                      <div className="space-y-2 mt-3 animate-in fade-in duration-300">
+                        <p className="text-[10px] font-extrabold uppercase tracking-wide text-indigo-600">Overzicht van gebruikte Cookies:</p>
+                        
+                        <div className="space-y-1">
+                          <p className="text-[10px] text-gray-900 font-black">Noodzakelijke cookies</p>
+                          <p className="text-[9.5px] text-gray-400 leading-normal font-semibold">
+                            Helpen een website bruikbaarder te maken door basisfuncties. Zonder deze functioneert het inlogsysteem niet.
+                          </p>
+                          <table className="w-full text-left text-[9.5px] border border-gray-100 rounded-lg overflow-hidden divide-y divide-gray-100 mt-1">
+                            <thead className="bg-gray-50 text-[8px] uppercase font-black text-gray-400">
+                              <tr>
+                                <th className="px-2 py-1.5 w-1/3">Doel</th>
+                                <th className="px-2 py-1.5 w-1/3">Voorbeeld</th>
+                                <th className="px-2 py-1.5 text-right">Bewaartermijn</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 font-semibold text-gray-550">
+                              <tr>
+                                <td className="px-2 py-1.5 text-[9px] text-gray-900 font-bold">Basisfunctionaliteit, beveiliging en inloggen</td>
+                                <td className="px-2 py-1.5 font-mono text-indigo-600 text-[9px]">sessie- en authenticatiecookies</td>
+                                <td className="px-2 py-1.5 text-[9px] text-right text-gray-400 font-bold">Sessie of tot 1 jaar waar van toepassing</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="space-y-1 pt-2">
+                          <p className="text-[10px] text-indigo-650 font-black">Voorkeurscookies</p>
+                          <p className="text-[9.5px] text-gray-400 leading-normal font-semibold">
+                            Onthouden van gebruikersinstellingen zoals weergavevoorkeuren.
+                          </p>
+                          <table className="w-full text-left text-[9.5px] border border-gray-100 rounded-lg overflow-hidden divide-y divide-gray-100 mt-1">
+                            <thead className="bg-gray-50 text-[8px] uppercase font-black text-gray-400">
+                              <tr>
+                                <th className="px-2 py-1.5 w-2/3">Doel</th>
+                                <th className="px-2 py-1.5 text-right">Bewaartermijn</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100 font-semibold text-gray-550">
+                              <tr>
+                                <td className="px-2 py-1.5 text-[9px] text-gray-900 font-semibold">Onthouden van gebruikersinstellingen zoals weergavevoorkeuren</td>
+                                <td className="px-2 py-1.5 text-[9px] text-right text-gray-400 font-bold">Tot 1 jaar</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <p className="text-[10px] text-emerald-600 font-black pt-1">
+                          ✓ Cruciale verklaring: Keuzebord gebruikt geen advertentie- of marketingcookies en geen tracking voor externe advertentiedoeleinden.
                         </p>
                       </div>
                     </div>
 
-                    {/* Art 1. Toepasselijkheid en Doel */}
+                    {/* 5. Delen van gegevens en beveiliging */}
+                    <span className="block border-t border-gray-100 my-4" />
                     <div className="space-y-1.5">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded bg-gray-100 text-[9px] font-black flex items-center justify-center text-indigo-600">1</span>
-                        Art 1. Toepasselijkheid & Contractsluiting
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        5. Delen van gegevens en beveiliging
                       </h4>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed">
-                        Deze Algemene Gebruikersvoorwaarden gelden voor elk gebruik van het platform Keuzebord. Door de applicatie te openen, te registreren of in te loggen, ontstaat er een bindend contract tussen de gebruiker (leerkracht of de vertegenwoordigde school) en de onafhankelijke ontwikkelaar/auteur van Keuzebord. Indien je niet akkoord gaat met alle bepalingen, ben je niet gemachtigd om de app te gebruiken.
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Persoonsgegevens worden niet verkocht. Wij maken gebruik van externe dienstverleners voor hosting, opslag en technische infrastructuur (zoals cloudproviders). Deze partijen verwerken gegevens uitsluitend in opdracht van Keuzebord ... en mogen deze niet voor eigen doeleinden gebruiken. Wij nemen passende technische en organisatorische maatregelen om persoonsgegevens te protecten. Hoewel wij streven naar een hoog beveiligingsniveau, kan absolute veiligheid niet worden gegarandeerd.
                       </p>
                     </div>
 
-                    {/* Art 2. GDPR Rol & Privacy Verplichtingen */}
+                    {/* 6. Doorgifte buiten de EER */}
                     <span className="block border-t border-gray-100 my-4" />
                     <div className="space-y-1.5">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded bg-gray-100 text-[9px] font-black flex items-center justify-center text-indigo-600">2</span>
-                        Art 2. GDPR Rollen: Gebruiker is de "Verwerkingsverantwoordelijke"
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        6. Doorgifte buiten de EER
                       </h4>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed">
-                        Onder de Europese Algemene Verordening Gegevensbescherming (AVG / GDPR) treedt de gebruiker (of de desbetreffende school) op als de <strong>Verwerkingsverantwoordelijke ("Data Controller")</strong> voor alle ingevoerde leerlingengegevens (zoals namen, klasbezetting, hoekenstatistieken en optionele foto's).
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Gegevens worden in principe opgeslagen binnen de Europese Economische Ruimte (EER), onder andere in Europese datacenters. Indien gegevens worden verwerkt door subverwerkers buiten de EER, gebeurt dit uitsluitend onder passende waarborgen overeenkomstig de AVG, zoals door de Europese Commissie goedgekeurde standaardcontractbepalingen.
                       </p>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed mt-1">
-                        De applicatie en haar ontwikkelaar fungeren louter als een <strong>technische passieve ICT-dienstverlener</strong>. De gebruiker/school draagt de volledige en exclusieve verantwoordelijkheid om:
+                    </div>
+
+                    {/* 7. Rechten van betrokkenen */}
+                    <span className="block border-t border-gray-100 my-4" />
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        7. Rechten van betrokkenen
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Betrokkenen (zoals leerkrachten en eventueel leerlingen) hebben onder de AVG recht op:
                       </p>
-                      <ul className="list-disc pl-5 space-y-1 text-gray-600 text-[10.5px] mt-1">
-                        <li>Voorafgaande, geldige toestemming van de ouders of wettelijke voogden van de leerlingen (jonger dan 16 jaar) te verkrijgen voor de invoer en verwerking van namen en foto's.</li>
-                        <li>De rechten van de betrokkene (recht op inzage, correctie, data-export of verwijdering) jegens ouders en leerlingen uit te voeren.</li>
-                        <li>Te verifiëren dat het gebruik van deze cloud-applicatie conform het interne privacyreglement van de desbetreffende school of scholenkoepel is.</li>
+                      <ul className="list-disc pl-5 space-y-1 text-gray-650 text-[10.5px] mt-1 font-semibold">
+                        <li>inzage</li>
+                        <li>correctie</li>
+                        <li>beperking van verwerking</li>
+                        <li>verwijdering</li>
+                        <li>overdraagbaarheid van gegevens</li>
+                      </ul>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold mt-1">
+                        Deze rechten kunnen worden uitgeoefend via de accountinstellingen of door contact op te nemen met de beheerder. Betrokkenen hebben tevens het recht om een klacht in te dienen bij de Belgische Gegevensbeschermingsautoriteit (GBA).
+                      </p>
+                    </div>
+
+                    {/* 8. Bewaartermijnen */}
+                    <span className="block border-t border-gray-100 my-4" />
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        8. Bewaartermijnen
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Gegevens worden niet langer bewaard dan noodzakelijk voor het leveren van de dienst. Accounts die gedurende 24 maanden inactief zijn, kunnen worden gearchiveerd en daarna verwijderd. Gegevens worden eveneens verwijderd op verzoek van de gebruiker, tenzij wettelijke verplichtingen een langere bewaartermijn vereisen.
+                      </p>
+                    </div>
+
+                    {/* 9. Wijzigingen */}
+                    <span className="block border-t border-gray-105 my-4" />
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        9. Wijzigingen
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Dit Privacybeleid kan van tijd tot tijd worden bijgewerkt om te voldoen aan gewijzigde wetgeving of technische ontwikkelingen. Wij informeren gebruikers via het Platform over relevante wijzigingen. De datum van de laatste wijziging staat bovenaan dit document vermeld.
+                      </p>
+                    </div>
+
+                    {/* 10. Contact en klachten */}
+                    <span className="block border-t border-gray-105 my-4" />
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        10. Contact en klachten
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Voor vragen of klachten met betrekking tot privacy of gegevensverwerking kunt u contact opnemen met de beheerder via de beschikbare contactgegevens binnen het Platform. Wij streven ernaar om vragen zo zorgvuldig en snel mogelijk te behandelen.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {legalModalTab === 'terms' && (
+                  <div className="space-y-5 animate-in fade-in duration-150">
+                    <div className="bg-amber-50/50 text-amber-950 p-4 rounded-2xl space-y-2 border border-amber-100 flex items-start gap-3">
+                      <div className="p-2 bg-white text-amber-600 rounded-xl shrink-0 mt-0.5 shadow-sm">
+                        <Scale size={18} strokeWidth={2.5} />
+                      </div>
+                      <div>
+                        <p className="font-black text-[11px] uppercase tracking-wide text-amber-900">Algemene Gebruiksvoorwaarden</p>
+                        <p className="text-[10.5px] font-semibold text-amber-850 leading-normal">
+                          <strong>Laatste update:</strong> 26 mei 2026. Deze voorwaarden zijn van toepassing op het gebruik van het platform Keuzebord. Door het gebruik van het Platform gaat u akkoord met deze voorwaarden.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* 1. Toepasselijkheid */}
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        1. Toepasselijkheid
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Deze voorwaarden zijn van toepassing op elk gebruik van Keuzebord. Door registratie, toegang of gebruik van het Platform komt een overeenkomst tot stand tussen de gebruiker (leerkracht of school) en de ontwikkelaar van Keuzebord. Indien u niet akkoord gaat met deze voorwaarden, dient u het Platform niet te gebruiken.
+                      </p>
+                    </div>
+
+                    {/* 2. Rollen onder de AVG */}
+                    <span className="block border-t border-gray-100 my-4" />
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        2. Rollen onder de AVG
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Binnen de context van de AVG/GDPR treedt de gebruiker of school op als verwerkingsverantwoordelijke voor de ingevoerde leerlinggegevens. Keuzebord treedt op als verwerker in opdracht van de gebruiker of school.
+                      </p>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold mt-1">
+                        De gebruiker is verantwoordelijk voor:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-gray-650 text-[10.5px] mt-1 font-semibold">
+                        <li>het beschikken over een geldige rechtsgrond voor verwerking van persoonsgegevens</li>
+                        <li>het informeren van betrokkenen waar vereist</li>
+                        <li>het naleven van interne school- of organisatiebeleid</li>
+                        <li>het uitoefenen van rechten van betrokkenen</li>
                       </ul>
                     </div>
 
-                    {/* Art 3. Volledige Exoneratie en Uitsluiting Aansprakelijkheid */}
+                    {/* 3. Beperking van aansprakelijkheid */}
                     <span className="block border-t border-gray-100 my-4" />
                     <div className="space-y-1.5">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-red-650">
-                        <span className="w-4 h-4 rounded bg-red-50 text-[9px] font-black flex items-center justify-center text-red-600">3</span>
-                        Art 3. Totale Uitsluiting van Aansprakelijkheid (Exoneratie)
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-655 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        3. Beperking van aansprakelijkheid
                       </h4>
-                      <p className="text-[10.5px] text-red-900 bg-red-50/50 p-3 rounded-xl border border-red-105 font-medium leading-relaxed">
-                        De applicatie wordt geleverd op een <strong>"as-is" (in de huidige feitelijke en juridische staat)</strong> en "as available" basis, zonder enige expliciete of impliciete garanties omtrent de werking, geschiktheid voor een specifiek doel, bugvrijheid of ononderbroken beschikbaarheid.
+                      <p className="text-[10.5px] text-gray-700 bg-gray-50 p-3 rounded-xl border border-gray-100 font-medium leading-relaxed">
+                        Het Platform wordt aangeboden op een “as is” en “as available” basis, zonder garanties over beschikbaarheid, foutloos functioneren of geschiktheid voor een specifiek doel.
                       </p>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed mt-1.5">
-                        Voor zover wettelijk toegestaan onder het Belgische en Europese recht (inclusief het Nieuw Belgisch Burgerlijk Wetboek), is de ontwikkelaar/auteur onder <strong>geen enkele omstandigheid</strong> aansprakelijk voor enige directe, indirecte, incidentele, bijzondere of gevolgschade. Dit omvat, maar is niet beperkt tot:
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold mt-1.5">
+                        Voor zover wettelijk toegestaan, is de ontwikkelaar niet aansprakelijk voor indirecte schade, gevolgschade, dataverlies of dienstonderbrekingen, behoudens in geval of opzet, zware fout of voor zover uitsluiting wettelijk niet is toegestaan. Dit omvat onder meer:
                       </p>
-                      <ul className="list-disc pl-5 space-y-1 text-gray-600 text-[10.5px] mt-1">
-                        <li><strong>Dataverlies of corruptie:</strong> Verlies of onbeschikbaarheid van leerlingengegevens, statistieken of instellingen in de Firestore online database.</li>
-                        <li><strong>Infrastructuurstoringen:</strong> Technische storingen, uitval van de applicatieserver, of onbereikbaarheid op smartboards of tablets tijdens schooluren.</li>
-                        <li><strong>Beveiligingsincidenten:</strong> Datalekken, hackaanvallen, of ongeoorloofde toegang tot gebruikersaccounts via phishing of zwakke wachtwoorden.</li>
-                        <li><strong>Pedagogische of administratieve fouten:</strong> Eventuele foutieve keuze-registraties of foute statistieken bij humeurevaluaties.</li>
+                      <ul className="list-disc pl-5 space-y-1 text-gray-650 text-[10.5px] mt-1 font-semibold">
+                        <li>verlies of corruptie van gegevens</li>
+                        <li>technische storingen of downtime</li>
+                        <li>beveiligingsincidenten of ongeautoriseerde toegang</li>
+                        <li>foutieve of onvolledige gegevensverwerking binnen de applicatie</li>
                       </ul>
                     </div>
 
-                    {/* Art 4. Vrijwaring */}
+                    {/* 4. Verantwoordelijkheid en vrijwaring */}
                     <span className="block border-t border-gray-100 my-4" />
                     <div className="space-y-1.5">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded bg-gray-100 text-[9px] font-black flex items-center justify-center text-indigo-600">4</span>
-                        Art 4. Vrijwaring (Indemnification)
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        4. Verantwoordelijkheid en vrijwaring
                       </h4>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed">
-                        De gebruiker en/of de school stemmen er onherroepelijk mee in de ontwikkelaar/auteur van Keuzebord volledig te verdedigen, te <strong>vrijwaren</strong> en schadeloos te stellen tegen alle claims, aansprakelijkheden, schadevergoedingen, boetes (inclusief administratieve boetes opgelegd door de Belgische Gegevensbeschermingsautoriteit (GBA) of toezichthouders), kosten of uitgaven (inclusief advocaatkosten) die voortvloeien uit of verband houden met de invoer van leerlinggegevens zonder ouderlijke toestemming of enige inbreuk op de verplichtingen onder de AVG/GDPR.
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        De gebruiker of school is verantwoordelijk voor het gebruik van het Platform en voor naleving van de toepasselijke wetgeving, inclusief de AVG/GDPR.
+                      </p>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold mt-1">
+                        De gebruiker vrijwaart de ontwikkelaar voor claims of aansprakelijkheden die voortvloeien uit onrechtmatig gebruik van het Platform of het ontbreken van een geldige rechtsgrond voor gegevensverwerking.
                       </p>
                     </div>
 
-                    {/* Art 5. Beëindiging en Recht tot Vergetelheid */}
+                    {/* 5. Beëindiging */}
                     <span className="block border-t border-gray-100 my-4" />
                     <div className="space-y-1.5">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded bg-gray-100 text-[9px] font-black flex items-center justify-center text-indigo-600">5</span>
-                        Art 5. Beëindiging & Permanente Verwijdering
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        5. Beëindiging
                       </h4>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed">
-                        Zowel de gebruiker als de ontwikkelaar heeft het recht de overeenkomst op elk moment op te zeggen. De gebruiker kan dit doen door de knop "Account verwijderen" te gebruiken. Dit verwijdert onherroepelijk en permanent alle klassen, leerlingen en instellingen van onze servers. De ontwikkelaar behoudt zich het recht voor om bij misbruik, buitensporige belasting van servers of inbreuk op deze voorwaarden, de toegang tot het platform direct te blokkeren zonder voorafgaande kennisgeving en zonder recht op schadevergoeding.
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Zowel de gebruiker als de ontwikkelaar kan de overeenkomst op elk moment beëindigen.
+                      </p>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold mt-1">
+                        De gebruiker kan zijn account verwijderen via de accountinstellingen, waarna gegevens worden verwijderd voor zover technisch en wettelijk mogelijk. De ontwikkelaar kan toegang tot het Platform beperken of beëindigen in geval van misbruik, overbelasting of schending van deze voorwaarden.
                       </p>
                     </div>
 
-                    {/* Art 6. Toepasselijk recht en bevoegde rechtbanken */}
+                    {/* 6. Toepasselijk recht */}
                     <span className="block border-t border-gray-100 my-4" />
                     <div className="space-y-1.5">
-                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded bg-gray-100 text-[9px] font-black flex items-center justify-center text-emerald-600">6</span>
-                        Art 6. Toepasselijk recht & Bevoegde rechtbanken
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650 animate-in fade-in duration-150">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        6. Toepasselijk recht
                       </h4>
-                      <p className="text-[10.5px] text-gray-500 font-medium leading-relaxed">
-                        Op deze overeenkomst, de Algemene Gebruikersvoorwaarden en alle geschillen die hieruit voortvloeien, is uitsluitend het <strong>Belgisch recht</strong> van toepassing. Alle geschillen van welke aard dan ook zullen bij uitsluiting worden voorgelegd aan de bevoegde rechtbanken van de maatschappelijke zetel van de ontwikkelaar of diens woonplaats in België.
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Op deze voorwaarden is Belgisch recht van toepassing. Geschillen worden voorgelegd aan de bevoegde rechtbanken in België, behoudens dwingendrechtelijke bepalingen die anders bepalen.
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {legalModalTab === 'contact' && (
+                  <div className="space-y-5 animate-in fade-in duration-150">
+                    <div className="bg-indigo-50/50 text-indigo-950 p-4 rounded-2xl space-y-2 border border-indigo-100 flex items-start gap-3">
+                      <div className="p-2.5 bg-white text-indigo-600 rounded-xl shrink-0 mt-0.5 shadow-sm">
+                        <Mail size={18} strokeWidth={2.5} />
+                      </div>
+                      <div>
+                        <p className="font-black text-[11px] uppercase tracking-wide text-indigo-900">Over Keuzebord & Contact</p>
+                        <p className="text-[10.5px] font-semibold text-indigo-850 leading-normal">
+                          Heb je vragen, opmerkingen of ervaar je technische uitdagingen? We helpen je graag persoonlijk verder om het gebruik in jouw klaslokaal zo vlot mogelijk te laten verlopen.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Hobbyproject informatie */}
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        Een warm hobbyproject
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Keuzebord is met veel toewijding en zorg gebouwd als een onafhankelijk <strong>hobbyproject</strong> met een warm hart voor het onderwijs. Onze missie is simpel: leerkrachten en scholen voorzien van een betrouwbaar, flexibel en visueel aantrekkelijk digitaal keuzebord, zonder overbodige commerciële of administratieve ballast.
+                      </p>
+                    </div>
+
+                    {/* Meteen actie bij problemen */}
+                    <span className="block border-t border-gray-100 my-4" />
+                    <div className="space-y-1.5">
+                      <h4 className="text-[11px] font-black text-gray-900 uppercase tracking-tight flex items-center gap-1.5 text-indigo-650">
+                        <span className="inline-block w-4 h-4 bg-indigo-100 text-indigo-600 rounded flex items-center justify-center text-[10px] font-extrabold mr-1">✓</span>
+                        Meteen actie bij problemen & feedback
+                      </h4>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold">
+                        Omdat dit een kleinschalig project is, zijn de communicatielijnen uiterst kort en persoonlijk! We begrijpen als geen ander hoe belangrijk een feilloze en stabiele werking in het klaslokaal of op het digibord is.
+                      </p>
+                      <p className="text-[10.5px] text-gray-550 font-medium leading-relaxed font-semibold mt-1">
+                        Bij eventuele technische fouten, storingen of andere problemen willen en zullen we dan ook <strong>meteen gerichte actie ondernemen</strong> om de situatie adequaat te herstellen en op te lossen. Jouw belevingskwaliteit en het gemak in jouw klas zijn onze absolute prioriteit!
+                      </p>
+                    </div>
+
+                    {/* Contact Venster */}
+                    <span className="block border-t border-gray-100 my-4" />
+                    <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-3 animate-in zoom-in-95 duration-150">
+                      <p className="font-extrabold text-emerald-950 text-[11px] uppercase tracking-wide flex items-center gap-1.5">
+                        <Mail size={14} className="text-emerald-700 font-extrabold" />
+                        Direct contact met de beheerder
+                      </p>
+                      
+                      <div className="space-y-2 text-emerald-950 text-[10.5px] font-semibold leading-relaxed">
+                        <p>
+                          Je kunt ons rechtstreeks bereiken via het onderstaande e-mailadres voor al je vragen, bugs of verbetersuggesties:
+                        </p>
+                        
+                        <div className="bg-white border border-emerald-150 p-3.5 rounded-xl flex items-center justify-between shadow-sm">
+                          <span className="font-mono text-emerald-800 font-extrabold select-all text-xs md:text-sm">
+                            stonetree15@gmail.com
+                          </span>
+                          <span className="text-[9px] bg-emerald-100 text-emerald-700 uppercase font-black tracking-widest px-1.5 py-0.5 rounded">
+                            Support Contact
+                          </span>
+                        </div>
+                        
+                        <p className="text-[10px] text-emerald-750 font-bold italic">
+                          * We doen er alles aan om alle inkomende berichten uiterst snel op te volgen en problemen meteen te tackelen!
+                        </p>
+                      </div>
                     </div>
                   </div>
                 )}
